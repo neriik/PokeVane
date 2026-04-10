@@ -124,7 +124,7 @@ if foto_vane or manual_ready:
                 else:
                     st.error("No se encontró la carta exacta.")
         else:
-            if foto_vane: st.warning("⚠️ No pude leer bien el nombre. Asegúrate de que no haya reflejos.")
+            if foto_vane: st.warning("⚠️ No pude leer bien el nombre.")
 
     except Exception as e:
         st.error(f"Error técnico: {e}")
