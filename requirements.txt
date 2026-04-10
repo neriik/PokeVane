@@ -1,0 +1,5 @@
+streamlit
+pytesseract
+pokemontcgsdk
+opencv-python-headless
+pillow
