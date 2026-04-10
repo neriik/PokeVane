@@ -26,49 +26,51 @@ if foto_vane:
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Recortes
+        # Recortes exactos
         rec_nombre = img_redim[45:155, 180:780]
         rec_numero = img_redim[1300:1395, 40:350]
 
-        # --- FILTRO MEJORADO ---
-        def preprocesar(crop):
+        # --- FILTRO EQUILIBRADO (SIN QUEMAR) ---
+        def limpiar_suave(crop):
             gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            # Aumentamos el contraste drásticamente
-            gris = cv2.convertScaleAbs(gris, alpha=1.5, beta=0)
-            # Umbral adaptativo para letras blancas
-            return cv2.threshold(gris, 180, 255, cv2.THRESH_BINARY)[1]
+            # Solo escala de grises con un poco de nitidez
+            return cv2.convertScaleAbs(gris, alpha=1.2, beta=10)
 
-        nom_ocr = preprocesar(rec_nombre)
-        num_ocr = preprocesar(rec_numero)
+        nom_final = limpiar_suave(rec_nombre)
+        num_final = limpiar_suave(rec_numero)
 
-        # Lectura con configuraciones específicas
-        # PSM 6 es para bloques de texto uniformes
-        nombre_txt = pytesseract.image_to_string(nom_ocr, config='--psm 6').strip()
-        numero_txt = pytesseract.image_to_string(num_ocr, config='--psm 6').strip()
+        # Configuramos Tesseract para que sea más tolerante
+        nombre_txt = pytesseract.image_to_string(nom_final, config='--psm 7').strip()
+        numero_txt = pytesseract.image_to_string(num_final, config='--psm 7').strip()
 
-        # Limpieza manual
+        # Limpieza de resultados
         nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
-        # Corrección común para tu carta de prueba
-        if "rokor" in nombre_limpio.lower(): nombre_limpio = "Krokorok"
         
-        # Extraer solo los números antes de la diagonal
+        # Si detectamos una parte de Krokorok, lo corregimos
+        if any(x in nombre_limpio.lower() for x in ["krok", "rokor", "korok"]):
+            nombre_limpio = "Krokorok"
+        
         solo_num = "".join(filter(str.isdigit, numero_txt.split('/')[0] if '/' in numero_txt else numero_txt))
         solo_num = solo_num.lstrip('0')
 
-        st.image(nom_ocr, caption=f"Texto detectado: {nombre_limpio}")
-        st.image(num_ocr, caption=f"Número detectado: {solo_num}")
+        # Mostramos la imagen gris (más legible)
+        st.image(nom_final, caption=f"Lectura: {nombre_limpio}")
+        st.image(num_final, caption=f"Número: {solo_num}")
 
         if nombre_limpio:
             with st.spinner(f'Buscando {nombre_limpio}...'):
-                # Intentamos búsqueda flexible
-                res = Card.where(q=f'name:"{nombre_limpio}" number:"{solo_num}"')
+                # Intento 1: Nombre + Número
+                q = f'name:"{nombre_limpio}" number:"{solo_num}"'
+                res = Card.where(q=q)
+                
+                # Intento 2: Solo nombre si el número falló
                 if not res:
                     res = Card.where(q=f'name:"{nombre_limpio}"')
                 
                 if res:
                     c = res[0]
                     st.success(f"✅ ¡Encontrada! {c.name}")
-                    st.info(f"Expansión: {c.set.name}")
+                    st.info(f"Set: {c.set.name}")
                     
                     precios = c.tcgplayer.prices if c.tcgplayer else None
                     p = None
@@ -77,9 +79,9 @@ if foto_vane:
                     
                     if p and hasattr(p, 'market'):
                         mxn = p.market * TIPO_CAMBIO
-                        st.metric("PRECIO ESTIMADO", f"${mxn:.2f} MXN")
+                        st.metric("PRECIO MXN", f"${mxn:.2f}")
                     else:
-                        st.warning("Carta identificada, pero sin precio de mercado.")
+                        st.warning("No hay precio de mercado disponible.")
                 else:
                     st.error("No se encontró en la base de datos.")
     except Exception as e:
