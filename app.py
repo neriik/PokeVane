@@ -164,4 +164,4 @@ if foto_vane:
             st.image(num_f, caption=f"Lectura Número: {solo_num}")
 
     except Exception as e:
-        st.error(f"¡Ups! Algo falló: {e}")
+        st.error(f"¡Ups! Algo falló: {str(e)}")
