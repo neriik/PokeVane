@@ -5,7 +5,7 @@ import pytesseract
 from pokemontcgsdk import Card
 from PIL import Image
 import re 
-import traceback # Para ver el error real
+import traceback
 
 # --- CONFIGURACIÓN ESTÉTICA Y DE TEMA ---
 TIPO_CAMBIO = 18.20
@@ -68,13 +68,12 @@ if foto_vane or manual_ready:
         if manual_ready:
             nombre_l, numero_l, total_l = m_nom, m_num, m_tot
         else:
-            # --- NUEVO MOTOR DE LECTURA DE IMAGEN (PIL) ---
+            # Motor de Lectura de Imagen Segura (PIL)
             imagen_pil = Image.open(foto_vane)
             img_array = np.array(imagen_pil)
             
-            # Convertimos a escala de grises de forma segura
-            if len(img_array.shape) == 3: # Si tiene color
-                if img_array.shape[2] == 4: # Si tiene canal alpha (transparencia de iPhone)
+            if len(img_array.shape) == 3: 
+                if img_array.shape[2] == 4: 
                     img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
                 gris = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
             else:
@@ -82,33 +81,49 @@ if foto_vane or manual_ready:
                 
             img_redim = cv2.resize(gris, (1000, 1400))
             
-            # --- PROCESAMIENTO QUIRÚRGICO DE DANTE ---
-            # Nombre: Letras negras
+            # Recortes y Filtros
             rec_nom_gris = img_redim[35:160, 150:850]
             _, bin_nom = cv2.threshold(rec_nom_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Número: INVERSIÓN (Para letras blancas)
             rec_num_gris = img_redim[1300:1375, 50:600]
             inv_num = cv2.bitwise_not(rec_num_gris)
             _, bin_num = cv2.threshold(inv_num, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Lectura
+            # Lectura Tesseract
             n_txt = pytesseract.image_to_string(bin_nom, config='--psm 7').strip()
             u_txt = pytesseract.image_to_string(bin_num, config='--psm 7').strip()
 
+            # Limpieza de Nombre
             nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
             if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # Extraer números
-            nums = re.findall(r'\d+', u_txt)
-            if len(nums) >= 2:
-                numero_l = nums[0].lstrip('0')
-                total_l = nums[1]
-                if not numero_l and nums[0]: numero_l = nums[0][-1]
-            elif len(nums) == 1:
-                numero_l = nums[0].lstrip('0')
+            # --- NUEVA INTELIGENCIA PARA NÚMEROS ---
+            u_txt_clean = u_txt.replace('O', '0').replace('o', '0')
+            
+            def limpiar_ceros(n_str):
+                limpio = n_str.lstrip('0')
+                return limpio if limpio else '0'
+
+            # Buscamos explícitamente el patrón XXX/YYY
+            match = re.search(r'(\d+)\s*[|/\\7]\s*(\d+)', u_txt_clean)
+            
+            if match:
+                numero_l = limpiar_ceros(match.group(1))
+                total_l = limpiar_ceros(match.group(2))
+            else:
+                # Si no hay diagonal clara, extraemos todos los números
+                nums = re.findall(r'\d+', u_txt_clean)
+                # Filtramos años de copyright (ej: 2023, 2025)
+                nums = [n for n in nums if not (len(n) == 4 and n.startswith(('19', '20')))]
+                
+                if len(nums) >= 2:
+                    # Tomamos siempre los últimos dos números (Ignora los iconos de la izquierda)
+                    numero_l = limpiar_ceros(nums[-2])
+                    total_l = limpiar_ceros(nums[-1])
+                elif len(nums) == 1:
+                    numero_l = limpiar_ceros(nums[0])
 
             with st.expander("🛠️ Ver ajustes técnicos"):
                 st.image(bin_nom, caption=f"Leído: {nombre_l}")
