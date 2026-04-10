@@ -29,7 +29,7 @@ st.markdown("""
 
     /* Títulos y textos */
     h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; text-align: center; }
-    h3 { color: #ffcb05; }
+    h3 { color: #ffcb05; text-align: center; }
     .stAlert { border-radius: 20px; border: 2px solid #ffcb05; background-color: #111111; color: #ffcb05; }
     
     /* Pestañas */
@@ -39,8 +39,11 @@ st.markdown("""
 
     /* Divisores */
     hr { border: 1px solid #3b4cca; }
+    
+    /* Centrar imágenes */
+    div.stImage { text-align: center; }
     </style>
-    """, unsafe_allow_html=True) # <-- AQUÍ ESTABA EL ERROR CORREGIDO
+    """, unsafe_allow_html=True)
 
 st.title("⚡ PokéVane Gold Edition")
 st.write("---")
@@ -78,11 +81,11 @@ if foto_vane:
         nom_f = filtro_vane(rec_nombre)
         num_f = filtro_vane(rec_numero)
 
-        # Lectura
+        # Lectura Tesseract
         nombre_txt = pytesseract.image_to_string(nom_f, config='--psm 3').strip()
         numero_txt = pytesseract.image_to_string(num_f, config='--psm 3').strip()
 
-        # Limpieza
+        # Limpieza de datos
         nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
         if any(x in nombre_txt.lower() for x in ["krok", "rokor", "korok"]):
             nombre_limpio = "Krokorok"
@@ -101,18 +104,24 @@ if foto_vane:
                 if res:
                     c = res[0]
                     
+                    # 🎉 ÉXITO 🎉
                     st.success(f"### ⚽️ ¡CARTA LOCALIZADA! ⚽️")
                     
-                    # --- FIESTA DE JOLTEON Y SANDSLASH ---
-                    st.markdown("### ✨ ¡Tus amigos están celebrando! ✨")
-                    col_pokes1, col_pokes2 = st.columns(2)
-                    with col_pokes1:
-                        st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=200)
-                    with col_pokes2:
-                        st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/28.png", width=200)
+                    # --- MOSTRAR IMAGEN OFICIAL DE LA CARTA ---
+                    if c.images and c.images.large:
+                        st.markdown("### ✨ Carta Escaneada: ✨")
+                        # Mostramos la imagen grande oficial, centrada y con un ancho de 300px
+                        st.image(c.images.large, width=300)
                     
-                    st.write(f"**Nombre:** {c.name}")
-                    st.write(f"**Expansión:** {c.set.name} (#{c.number}/{c.set.printedTotal})")
+                    st.markdown("#### Detalle de la Carta")
+                    col_det1, col_det2 = st.columns(2)
+                    with col_det1:
+                        st.write(f"**Nombre:** {c.name}")
+                        st.write(f"**Expansión:** {c.set.name}")
+                    with col_det2:
+                        st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
+                        st.write(f"**Rareza:** {getattr(c, 'rarity', 'Desconocida')}")
+                    
                     st.divider()
                     
                     # Precios
