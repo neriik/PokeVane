@@ -40,7 +40,7 @@ st.markdown("""
     /* Divisores */
     hr { border: 1px solid #3b4cca; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True) # <-- AQUÍ ESTABA EL ERROR CORREGIDO
 
 st.title("⚡ PokéVane Gold Edition")
 st.write("---")
@@ -107,10 +107,8 @@ if foto_vane:
                     st.markdown("### ✨ ¡Tus amigos están celebrando! ✨")
                     col_pokes1, col_pokes2 = st.columns(2)
                     with col_pokes1:
-                        # Jolteon eléctrico
                         st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=200)
                     with col_pokes2:
-                        # Sandslash poderoso
                         st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/28.png", width=200)
                     
                     st.write(f"**Nombre:** {c.name}")
@@ -127,7 +125,7 @@ if foto_vane:
                         val_usd = p.market
                         val_mxn = val_usd * TIPO_CAMBIO
                         
-                        # --- MÉTRICAS BONITAS (AMARILLAS CON TEXTO NEGRO) ---
+                        # --- MÉTRICAS BONITAS ---
                         m1, m2 = st.columns(2)
                         m1.metric("PRECIO MXN", f"${val_mxn:.2f}")
                         m2.metric("PRECIO USD", f"${val_usd:.2f}")
@@ -137,7 +135,7 @@ if foto_vane:
                 else:
                     st.error("❌ No encontré esa carta. Intenta con una foto más clara.")
         
-        # Detalles técnicos (Escondidos por default)
+        # Detalles técnicos (Escondidos)
         with st.expander("🛠️ Ver ajustes técnicos"):
             st.image(nom_f, caption=f"Lectura Nombre: {nombre_limpio}")
             st.image(num_f, caption=f"Lectura Número: {solo_num}")
