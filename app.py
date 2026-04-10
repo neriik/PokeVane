@@ -182,4 +182,4 @@ if foto_vane or manual_ready:
             st.code(traceback.format_exc())
 
 # --- MENSAJE ESPECIAL ---
-st.markdown("<div class='mensaje-papa'>✨ Con cariño, papá. ✨</div>", unsafe_allow_html=True)
+st.markdown("<div class='mensaje-papa'>✨ Con cariño, papá Niri. ✨</div>", unsafe_allow_html=True)
