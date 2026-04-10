@@ -20,12 +20,11 @@ st.markdown("""
 
 st.title("⚡ PokéVane Gold Edition")
 
-# --- BIENVENIDA ---
 col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nEscaneando con máxima precisión...")
+    st.write("### ✨ ¡Hola Vane! \nSubre tu foto y deja que Jolteon haga su magia.")
 
 st.divider()
 
@@ -43,7 +42,6 @@ with tab_manual:
     m_tot = st.text_input("Total del set")
     if st.button("Buscar ahora 🔍"): manual_ready = True
 
-# --- PROCESAMIENTO ---
 if foto_vane or manual_ready:
     try:
         nombre_l, numero_l, total_l = "", "", ""
@@ -54,29 +52,28 @@ if foto_vane or manual_ready:
             file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_redim = cv2.resize(img, (1000, 1400))
-            
-            # --- PROCESAMIENTO BINARIO (OTSU) ---
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
-            # Aplicamos un desenfoque leve para quitar ruido de píxeles
-            blur = cv2.GaussianBlur(gris, (5,5), 0)
-            # El Umbral de Otsu separa fondo de letras perfectamente
-            _, binaria = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Recortes
-            rec_nom = binaria[35:160, 150:850]
-            rec_num = binaria[1300:1375, 50:600]
+            # --- PROCESAMIENTO DIFERENCIADO ---
+            # Para el Nombre (Letras oscuras)
+            _, bin_nom = cv2.threshold(gris[35:160, 150:850], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Forzamos lectura de una sola línea
-            n_txt = pytesseract.image_to_string(rec_nom, config='--psm 7').strip()
-            u_txt = pytesseract.image_to_string(rec_num, config='--psm 7').strip()
+            # Para el Número (Letras blancas): INVERTIMOS
+            # Primero recortamos
+            rec_num_gris = gris[1300:1380, 50:600]
+            # Invertimos colores para que el texto blanco sea negro
+            inv_num = cv2.bitwise_not(rec_num_gris)
+            _, bin_num = cv2.threshold(inv_num, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Limpieza básica
+            # Lectura
+            n_txt = pytesseract.image_to_string(bin_nom, config='--psm 7').strip()
+            u_txt = pytesseract.image_to_string(bin_num, config='--psm 7').strip()
+
             nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
-            if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # Limpieza de números
+            # Extraer números
             nums = re.findall(r'\d+', u_txt)
             if len(nums) >= 2:
                 numero_l = nums[0].lstrip('0')
@@ -86,11 +83,11 @@ if foto_vane or manual_ready:
                 numero_l = nums[0].lstrip('0')
 
             with st.expander("🛠️ Detalles Técnicos"):
-                st.image(rec_nom, caption=f"Leído: {nombre_l}")
-                st.image(rec_num, caption=f"Leído: {numero_l} de {total_l}")
+                st.image(bin_nom, caption=f"Leído: {nombre_l}")
+                st.image(bin_num, caption=f"Leído: {numero_l} / {total_l}")
 
         # --- BÚSQUEDA ---
-        if len(nombre_l) >= 3:
+        if len(nombre_l) >= 2:
             with st.spinner('🌟 Buscando...'):
                 q = f'name:"{nombre_l}" number:"{numero_l}"'
                 if total_l: q += f' set.printedTotal:{total_l}'
@@ -127,7 +124,7 @@ if foto_vane or manual_ready:
                 else:
                     st.error("No se encontró la carta exacta.")
         else:
-            if foto_vane: st.warning("⚠️ No pude leer bien el nombre. Asegúrate de que no haya sombras.")
+            if foto_vane: st.warning("⚠️ No pude leer bien el nombre.")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error técnico: {e}")
