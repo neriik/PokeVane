@@ -3,7 +3,6 @@ import cv2
 import numpy as np
 import pytesseract
 from pokemontcgsdk import Card
-import re # Para limpieza extra
 
 # --- CONFIGURACIÓN ESTÉTICA Y DE TEMA ---
 TIPO_CAMBIO = 18.20
@@ -78,9 +77,19 @@ with tab_camara:
 # --- LÓGICA DE PROCESAMIENTO ---
 if foto_vane:
     try:
+        # --- LA MAGIA ESTÁ AQUÍ ---
+        # Rebobinamos el archivo por si Streamlit ya lo había leído
+        foto_vane.seek(0) 
+        
         # Procesamiento de imagen
         file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
+        
+        # Escudo protector por si la imagen viene corrupta
+        if img is None:
+            st.warning("⚠️ No pude cargar la imagen correctamente. Por favor, súbela de nuevo.")
+            st.stop()
+            
         img_redim = cv2.resize(img, (1000, 1400))
         
         # Recortes (Los que funcionaron perfecto)
@@ -164,4 +173,9 @@ if foto_vane:
             st.image(num_f, caption=f"Lectura Número: {solo_num}")
 
     except Exception as e:
-        st.error(f"¡Ups! Algo falló: {str(e)}")
+        # Hacemos el error más amigable y evitamos el crasheo visual
+        error_str = str(e)
+        if "empty" in error_str.lower() or "resize" in error_str.lower():
+            st.warning("⚠️ Hubo un pequeño fallo al leer la imagen. Por favor, cierra la foto actual y vuelve a seleccionarla en la galería.")
+        else:
+            st.error(f"¡Ups! Algo técnico falló. Detalles para Neri: {error_str}")
