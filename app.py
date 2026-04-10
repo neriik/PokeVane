@@ -54,14 +54,14 @@ if foto_vane or manual_ready:
             img_redim = cv2.resize(img, (1000, 1400))
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
 
-            # --- PROCESAMIENTO DIFERENCIADO ---
-            # Para el Nombre (Letras oscuras)
-            _, bin_nom = cv2.threshold(gris[35:160, 150:850], 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # --- PROCESAMIENTO QUIRÚRGICO ---
+            # Nombre: Filtro Otsu Normal
+            rec_nom_gris = gris[35:160, 150:850]
+            _, bin_nom = cv2.threshold(rec_nom_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
-            # Para el Número (Letras blancas): INVERTIMOS
-            # Primero recortamos
-            rec_num_gris = gris[1300:1380, 50:600]
-            # Invertimos colores para que el texto blanco sea negro
+            # Número: INVERSIÓN (Para letras blancas)
+            rec_num_gris = gris[1300:1375, 50:600]
+            # Invertimos los colores: blanco -> negro, negro -> blanco
             inv_num = cv2.bitwise_not(rec_num_gris)
             _, bin_num = cv2.threshold(inv_num, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
@@ -120,7 +120,7 @@ if foto_vane or manual_ready:
                         m1.metric("PRECIO MXN", f"${v_usd * TIPO_CAMBIO:.2f}")
                         m2.metric("PRECIO USD", f"${v_usd:.2f}")
                     else:
-                        st.warning("Sin precio disponible.")
+                        st.warning("Sin precio disponible hoy.")
                 else:
                     st.error("No se encontró la carta exacta.")
         else:
