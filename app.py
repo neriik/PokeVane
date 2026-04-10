@@ -5,62 +5,91 @@ import pytesseract
 from pokemontcgsdk import Card
 from PIL import Image
 
-# Configuración inicial
+# TIPO DE CAMBIO
 TIPO_CAMBIO = 18.20
 
-st.set_page_config(page_title="PokéVane Pro", page_icon="⚡")
-st.title("⚡ PokéVane Pro v1.0")
-st.write("Hola Vane, toma una foto a tu carta para valuarla.")
+st.set_page_config(page_title="PokéVane Pro", layout="centered")
 
-# El botón que abre la cámara en el iPhone 16
-foto_vane = st.camera_input("Enfoca el nombre y el número")
+st.title("⚡ PokéVane Pro")
+st.write("Mejores resultados: Usa fotos nítidas y bien iluminadas.")
 
+# --- OPCIONES DE ENTRADA ---
+tab1, tab2 = st.tabs(["📸 Usar Cámara", "📁 Subir Foto"])
+
+foto_vane = None
+
+with tab1:
+    camara = st.camera_input("Enfoca el nombre y el número")
+    if camara:
+        foto_vane = camara
+
+with tab2:
+    galeria = st.file_uploader("Selecciona una foto de tu galería", type=['jpg', 'jpeg', 'png'])
+    if galeria:
+        foto_vane = galeria
+
+# --- PROCESAMIENTO ---
 if foto_vane:
-    # Convertir la foto para que OpenCV la entienda
-    file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
-    img_redim = cv2.resize(img, (1000, 1400))
+    try:
+        # Convertir a imagen de OpenCV
+        file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
+        img = cv2.imdecode(file_bytes, 1)
+        
+        # Normalizar tamaño para que los recortes funcionen
+        img_redim = cv2.resize(img, (1000, 1400))
+        
+        # Recortes (Ajustados según nuestras pruebas exitosas)
+        rec_nombre = img_redim[45:155, 180:780]
+        rec_numero = img_redim[1300:1395, 40:350]
 
-    # Recortes (Basados en lo que calibramos hoy)
-    rec_nombre = img_redim[45:145, 180:750]
-    rec_numero = img_redim[1300:1395, 40:350]
+        # Procesamiento para OCR
+        def limpiar_imagen(crop):
+            gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            return cv2.threshold(gris, 150, 255, cv2.THRESH_BINARY_INV)[1]
 
-    # Procesamiento
-    gris_nom = cv2.cvtColor(rec_nombre, cv2.COLOR_BGR2GRAY)
-    _, limpia_nom = cv2.threshold(gris_nom, 150, 255, cv2.THRESH_BINARY_INV)
-    lectura_nom = pytesseract.image_to_string(limpia_nom, config='--psm 7').strip()
+        nom_ocr = limpiar_imagen(rec_nombre)
+        num_ocr = limpiar_imagen(rec_numero)
 
-    gris_num = cv2.cvtColor(rec_numero, cv2.COLOR_BGR2GRAY)
-    _, limpia_num = cv2.threshold(gris_num, 150, 255, cv2.THRESH_BINARY_INV)
-    lectura_num = pytesseract.image_to_string(limpia_num, config='--psm 7').strip()
+        # Mostrar qué está viendo la app para que Vane sepa si enfocó bien
+        st.image(rec_nombre, caption="Lo que PokéVane leyó arriba")
+        
+        # Lectura Tesseract
+        lectura_nom = pytesseract.image_to_string(nom_ocr, config='--psm 7').strip()
+        lectura_num = pytesseract.image_to_string(num_ocr, config='--psm 7').strip()
 
-    # Limpieza
-    nombre_limpio = "".join(filter(str.isalpha, lectura_nom))
-    solo_num = lectura_num.split('/')[0] if '/' in lectura_num else lectura_num
-    solo_num = solo_num.lstrip('0')
+        # Limpieza de datos
+        nombre_limpio = "".join(filter(str.isalpha, lectura_nom))
+        # Si detectamos Krokorok o algo similar, lo forzamos (opcional)
+        if "Krokorok" in nombre_limpio: nombre_limpio = "Krokorok"
+        
+        solo_num = lectura_num.split('/')[0] if '/' in lectura_num else lectura_num
+        solo_num = solo_num.lstrip('0')
 
-    if nombre_limpio:
-        st.subheader(f"🔍 Detectado: {nombre_limpio} #{solo_num}")
-        try:
-            query = f'name:"{nombre_limpio}" number:"{solo_num}"'
-            resultados = Card.where(q=query)
-            if resultados:
-                c = resultados[0]
-                st.success(f"✅ ¡Localizada! - {c.set.name}")
+        if nombre_limpio:
+            st.divider()
+            st.header(f"🔍 {nombre_limpio} #{solo_num}")
+            
+            with st.spinner('Consultando base de datos mundial...'):
+                query = f'name:"{nombre_limpio}" number:"{solo_num}"'
+                resultados = Card.where(q=query)
                 
-                # Precios
-                p = None
-                if c.tcgplayer and c.tcgplayer.prices:
-                    prices = c.tcgplayer.prices
-                    p = getattr(prices, 'normal', None) or getattr(prices, 'holofoil', None)
-                
-                if p and hasattr(p, 'market'):
-                    val_usd = p.market
-                    st.metric("Valor en Pesos", f"${val_usd * TIPO_CAMBIO:.2f} MXN")
-                    st.info(f"Precio en USD: ${val_usd:.2f}")
+                if resultados:
+                    c = resultados[0]
+                    st.success(f"✅ ¡CARTA ENCONTRADA! ({c.set.name})")
+                    
+                    # Precios
+                    p = None
+                    if c.tcgplayer and c.tcgplayer.prices:
+                        precios = c.tcgplayer.prices
+                        p = getattr(precios, 'normal', None) or getattr(precios, 'holofoil', None) or getattr(precios, 'reverseHolofoil', None)
+                    
+                    if p and hasattr(p, 'market'):
+                        val_usd = p.market
+                        st.metric("VALOR ACTUAL (MXN)", f"${val_usd * TIPO_CAMBIO:.2f}")
+                        st.caption(f"Valor internacional: ${val_usd:.2f} USD")
+                    else:
+                        st.warning("⚠️ No hay precio de mercado hoy.")
                 else:
-                    st.warning("No hay precio de mercado disponible.")
-            else:
-                st.error("No encontré la carta exacta. Revisa el enfoque.")
-        except Exception as e:
-            st.error(f"Error de conexión: {e}")
+                    st.error("No se encontró la carta exacta. Prueba con una foto más clara.")
+    except Exception as e:
+        st.error(f"Hubo un detalle: {e}")
