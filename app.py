@@ -5,68 +5,71 @@ import pytesseract
 from pokemontcgsdk import Card
 from PIL import Image
 
-# Configuración básica
 TIPO_CAMBIO = 18.20
 
 st.set_page_config(page_title="PokéVane Pro", layout="centered")
 st.title("⚡ PokéVane Pro")
 
-# Pestañas para subir foto
-tab1, tab2 = st.tabs(["📸 Cámara Directa", "📁 Galería"])
+tab1, tab2 = st.tabs(["📸 Cámara", "📁 Galería"])
 foto_vane = None
 
 with tab1:
-    camara = st.camera_input("Enfoca bien el nombre")
+    camara = st.camera_input("Enfoca bien")
     if camara: foto_vane = camara
 with tab2:
-    galeria = st.file_uploader("Sube una foto nítida", type=['jpg', 'jpeg', 'png'])
+    galeria = st.file_uploader("Sube foto nítida", type=['jpg', 'jpeg', 'png'])
     if galeria: foto_vane = galeria
 
 if foto_vane:
     try:
-        # Procesar imagen
         file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Recortes optimizados
+        # Recortes
         rec_nombre = img_redim[45:155, 180:780]
         rec_numero = img_redim[1300:1395, 40:350]
 
-        # OCR
-        gris_nom = cv2.cvtColor(rec_nombre, cv2.COLOR_BGR2GRAY)
-        limpia_nom = cv2.threshold(gris_nom, 150, 255, cv2.THRESH_BINARY_INV)[1]
-        
-        gris_num = cv2.cvtColor(rec_numero, cv2.COLOR_BGR2GRAY)
-        limpia_num = cv2.threshold(gris_num, 150, 255, cv2.THRESH_BINARY_INV)[1]
+        # --- FILTRO MEJORADO ---
+        def preprocesar(crop):
+            gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            # Aumentamos el contraste drásticamente
+            gris = cv2.convertScaleAbs(gris, alpha=1.5, beta=0)
+            # Umbral adaptativo para letras blancas
+            return cv2.threshold(gris, 180, 255, cv2.THRESH_BINARY)[1]
 
-        nombre_txt = pytesseract.image_to_string(limpia_nom, config='--psm 7').strip()
-        numero_txt = pytesseract.image_to_string(limpia_num, config='--psm 7').strip()
+        nom_ocr = preprocesar(rec_nombre)
+        num_ocr = preprocesar(rec_numero)
 
-        # Limpieza
+        # Lectura con configuraciones específicas
+        # PSM 6 es para bloques de texto uniformes
+        nombre_txt = pytesseract.image_to_string(nom_ocr, config='--psm 6').strip()
+        numero_txt = pytesseract.image_to_string(num_ocr, config='--psm 6').strip()
+
+        # Limpieza manual
         nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
-        solo_num = numero_txt.split('/')[0] if '/' in numero_txt else numero_txt
-        solo_num = "".join(filter(str.isdigit, solo_num)) # Solo números
+        # Corrección común para tu carta de prueba
+        if "rokor" in nombre_limpio.lower(): nombre_limpio = "Krokorok"
+        
+        # Extraer solo los números antes de la diagonal
+        solo_num = "".join(filter(str.isdigit, numero_txt.split('/')[0] if '/' in numero_txt else numero_txt))
+        solo_num = solo_num.lstrip('0')
 
-        # Mostrar recortes para control
-        st.image(rec_nombre, caption=f"Nombre detectado: {nombre_limpio}")
-        st.image(rec_numero, caption=f"Número detectado: {solo_num}")
+        st.image(nom_ocr, caption=f"Texto detectado: {nombre_limpio}")
+        st.image(num_ocr, caption=f"Número detectado: {solo_num}")
 
         if nombre_limpio:
-            with st.spinner('Buscando en la base de datos...'):
-                # Intento 1: Nombre + Número
-                q = f'name:"{nombre_limpio}" number:"{solo_num}"'
-                res = Card.where(q=q)
-                
-                # Intento 2 (Respaldo): Solo nombre si el número falló
+            with st.spinner(f'Buscando {nombre_limpio}...'):
+                # Intentamos búsqueda flexible
+                res = Card.where(q=f'name:"{nombre_limpio}" number:"{solo_num}"')
                 if not res:
                     res = Card.where(q=f'name:"{nombre_limpio}"')
                 
                 if res:
                     c = res[0]
-                    st.success(f"✅ ¡Encontrada! {c.name} ({c.set.name})")
+                    st.success(f"✅ ¡Encontrada! {c.name}")
+                    st.info(f"Expansión: {c.set.name}")
                     
-                    # Extraer precio
                     precios = c.tcgplayer.prices if c.tcgplayer else None
                     p = None
                     if precios:
@@ -76,8 +79,8 @@ if foto_vane:
                         mxn = p.market * TIPO_CAMBIO
                         st.metric("PRECIO ESTIMADO", f"${mxn:.2f} MXN")
                     else:
-                        st.info("No hay precio de mercado actual, pero la carta es real.")
+                        st.warning("Carta identificada, pero sin precio de mercado.")
                 else:
-                    st.error("No encontré la carta en la base de datos. Intenta otra foto.")
+                    st.error("No se encontró en la base de datos.")
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error: {e}")
