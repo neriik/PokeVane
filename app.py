@@ -9,29 +9,25 @@ import re
 TIPO_CAMBIO = 18.20
 st.set_page_config(page_title="PokéVane Gold ✨", page_icon="⚡", layout="centered")
 
-# --- CSS LOOK ELÉCTRICO ---
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffcb05; }
     [data-testid="stMetricValue"] { color: #000000 !important; font-family: 'Arial Black'; font-size: 35px; }
     div[data-testid="stMetric"] { background-color: #ffcb05; padding: 20px; border-radius: 20px; border: 3px solid #3b4cca; }
     h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; text-align: center; }
-    .stAlert { border-radius: 20px; border: 2px solid #ffcb05; background-color: #111111; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("⚡ PokéVane Gold Edition")
 
-# --- BIENVENIDA ---
 col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nSube tu foto o busca manualmente.")
+    st.write("### ✨ ¡Hola Vane! \nSubre tu foto y deja que Jolteon haga su magia.")
 
 st.divider()
 
-# --- PESTAÑAS ---
 tab_gal, tab_manual = st.tabs(["📁 Subir de Galería", "⌨️ Búsqueda Manual"])
 foto_vane = None
 manual_ready = False
@@ -41,13 +37,11 @@ with tab_gal:
     if galeria: foto_vane = galeria
 
 with tab_manual:
-    m_nom = st.text_input("Nombre del Pokémon")
-    m_num = st.text_input("Número (ej: 32)")
-    m_tot = st.text_input("Total (ej: 198)")
-    if st.button("Buscar ahora 🔍"):
-        manual_ready = True
+    m_nom = st.text_input("Nombre")
+    m_num = st.text_input("Número")
+    m_tot = st.text_input("Total del set")
+    if st.button("Buscar ahora 🔍"): manual_ready = True
 
-# --- PROCESAMIENTO ---
 if foto_vane or manual_ready:
     try:
         nombre_l, numero_l, total_l = "", "", ""
@@ -55,53 +49,46 @@ if foto_vane or manual_ready:
         if manual_ready:
             nombre_l, numero_l, total_l = m_nom, m_num, m_tot
         else:
-            # Procesamiento de imagen
             file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_redim = cv2.resize(img, (1000, 1400))
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
-            final_img = cv2.convertScaleAbs(gris, alpha=1.6, beta=10)
+            final_img = cv2.convertScaleAbs(gris, alpha=1.7, beta=10)
 
-            # Recortes
             rec_nom = final_img[35:160, 150:850]
             rec_num = final_img[1300:1375, 50:600]
             
             n_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
             u_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
 
-            # Limpieza
             nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
-            if "rcanine" in n_txt.lower(): nombre_l = "Arcanine"
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
+            if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # Números con Regex
+            # --- CORRECCIÓN DE NÚMEROS ---
             nums = re.findall(r'\d+', u_txt)
             if len(nums) >= 2:
-                numero_l, total_l = nums[0], nums[1]
+                numero_l = nums[0].lstrip('0')
+                total_l = nums[1]
+                if not numero_l and nums[0]: numero_l = nums[0][-1] # Si era '005' y falló, toma el '5'
             elif len(nums) == 1:
-                numero_l = nums[0]
+                numero_l = nums[0].lstrip('0')
 
             with st.expander("🛠️ Detalles Técnicos"):
-                st.image(rec_nom, caption=f"Nombre: {nombre_l}")
-                st.image(rec_num, caption=f"Serie: {numero_l}/{total_l}")
+                st.image(rec_nom, caption=f"Leído: {nombre_l}")
+                st.image(rec_num, caption=f"Leído: {numero_l} de {total_l}")
 
-        # --- BÚSQUEDA ---
         if len(nombre_l) >= 2:
-            with st.spinner('🌟 Buscando...'):
-                # Intento 1: Exacto
+            with st.spinner('Buscando...'):
+                # Intento 1: Todo junto
                 q = f'name:"{nombre_l}" number:"{numero_l}"'
                 if total_l: q += f' set.printedTotal:{total_l}'
                 res = Card.where(q=q)
                 
-                # Intento 2: Solo nombre y numero
                 if not res:
                     res = Card.where(q=f'name:"{nombre_l}" number:"{numero_l}"')
                 
-                # Intento 3: Solo nombre
-                if not res:
-                    res = Card.where(q=f'name:"{nombre_l}"')
-
                 if res:
                     c = res[0]
                     st.success(f"### 🔴 ¡LOCALIZADA! 🔴")
@@ -111,8 +98,8 @@ if foto_vane or manual_ready:
                     with col2:
                         st.write(f"### {c.name}")
                         st.write(f"**Set:** {c.set.name}")
-                        st.write(f"**Rareza:** {c.rarity if c.rarity else 'Común'}")
-                        st.write(f"**Serie:** #{c.number}/{c.set.printedTotal}")
+                        st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
+                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'Común'}")
                     
                     st.divider()
                     p = None
@@ -126,11 +113,8 @@ if foto_vane or manual_ready:
                         m1.metric("PRECIO MXN", f"${v_usd * TIPO_CAMBIO:.2f}")
                         m2.metric("PRECIO USD", f"${v_usd:.2f}")
                     else:
-                        st.warning("No hay precio disponible hoy.")
+                        st.warning("Sin precio disponible.")
                 else:
-                    st.error("No se encontró ninguna coincidencia.")
-        else:
-            st.warning("⚠️ No pude detectar un nombre válido.")
-
+                    st.error("No se encontró la carta exacta.")
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error: {e}")
