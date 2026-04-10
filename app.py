@@ -3,20 +3,18 @@ import cv2
 import numpy as np
 import pytesseract
 from pokemontcgsdk import Card
+from PIL import Image
+import re 
+import traceback # Para ver el error real
 
 # --- CONFIGURACIÓN ESTÉTICA Y DE TEMA ---
 TIPO_CAMBIO = 18.20
 
-# Ponemos la página en modo ancho y con un título divertido
 st.set_page_config(page_title="PokéVane Gold ✨", page_icon="⚡", layout="centered")
 
-# CSS personalizado para un tema oscuro y eléctrico
 st.markdown("""
     <style>
-    /* Fondo negro para toda la app */
     .main { background-color: #000000; color: #ffcb05; }
-    
-    /* Estilo para las métricas (precios) */
     [data-testid="stMetricValue"] { color: #000000 !important; font-family: 'Arial Black'; font-size: 35px; }
     [data-testid="stMetricLabel"] { color: #555555 !important; font-weight: bold; }
     div[data-testid="stMetric"] { 
@@ -26,121 +24,121 @@ st.markdown("""
         box-shadow: 0px 5px 15px rgba(255, 203, 5, 0.3);
         border: 2px solid #3b4cca;
     }
-
-    /* Títulos y textos */
     h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; text-align: center; }
     h3 { color: #ffcb05; }
     .stAlert { border-radius: 20px; border: 2px solid #ffcb05; background-color: #111111; color: #ffcb05; }
-    
-    /* Pestañas */
     .stTabs [data-baseweb="tab-list"] { background-color: #111111; border-radius: 10px; }
     .stTabs [data-baseweb="tab"] { color: #ffcb05; }
     .stTabs [data-baseweb="tab"][aria-selected="true"] { background-color: #3b4cca; border-radius: 10px; }
-
-    /* Divisores */
     hr { border: 1px solid #3b4cca; }
-    
-    /* Imagen de Jolteon celebrando */
-    .jolteon-celebra {
-        text-align: center;
-        margin-top: 20px;
-    }
+    .jolteon-celebra { text-align: center; margin-top: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
-# Título y Bienvenida
 st.title("⚡ PokéVane Gold Edition")
 
-# --- MINI COMPAÑERO DE ENTRADA (Solo Jolteon) ---
-col_jolteon_mini, col_text_mini = st.columns([1, 10]) # Jolteon es el principal
-with col_jolteon_mini:
-    st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=50) # Jolteon
-with col_text_mini:
+col_j, col_t = st.columns([1, 4])
+with col_j:
+    st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=50)
+with col_t:
     st.write("### ✨ ¡Hola Vane! Listos para valuar tus cartas.")
 
 st.divider()
 
-# --- MENÚ DE ENTRADA ---
-tab_galeria, tab_camara = st.tabs(["📁 Subir de Galería", "📸 Usar Cámara"])
+tab_galeria, tab_manual = st.tabs(["📁 Subir de Galería", "⌨️ Búsqueda Manual"])
 
 foto_vane = None
+manual_ready = False
 
 with tab_galeria:
     galeria = st.file_uploader("Elige la foto más nítida de tu iPhone", type=['jpg', 'jpeg', 'png'])
     if galeria: foto_vane = galeria
 
-with tab_camara:
-    st.info("💡 Consejo: Para mejor enfoque, toma la foto primero con tu cámara normal y súbela en la otra pestaña.")
-    camara = st.camera_input("Escanear")
-    if camara: foto_vane = camara
+with tab_manual:
+    m_nom = st.text_input("Nombre de la carta")
+    m_num = st.text_input("Número")
+    m_tot = st.text_input("Total del set")
+    if st.button("Buscar manualmente 🔍"): manual_ready = True
 
 # --- LÓGICA DE PROCESAMIENTO ---
-if foto_vane:
+if foto_vane or manual_ready:
     try:
-        # --- LA MAGIA ESTÁ AQUÍ ---
-        # Rebobinamos el archivo por si Streamlit ya lo había leído
-        foto_vane.seek(0) 
-        
-        # Procesamiento de imagen
-        file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
-        img = cv2.imdecode(file_bytes, 1)
-        
-        # Escudo protector por si la imagen viene corrupta
-        if img is None:
-            st.warning("⚠️ No pude cargar la imagen correctamente. Por favor, súbela de nuevo.")
-            st.stop()
+        nombre_l, numero_l, total_l = "", "", ""
+
+        if manual_ready:
+            nombre_l, numero_l, total_l = m_nom, m_num, m_tot
+        else:
+            # --- NUEVO MOTOR DE LECTURA DE IMAGEN (PIL) ---
+            imagen_pil = Image.open(foto_vane)
+            img_array = np.array(imagen_pil)
             
-        img_redim = cv2.resize(img, (1000, 1400))
-        
-        # Recortes (Los que funcionaron perfecto)
-        rec_nombre = img_redim[40:160, 150:800]
-        rec_numero = img_redim[1305:1345, 100:450] 
-
-        def filtro_vane(crop):
-            gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            return cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
-
-        nom_f = filtro_vane(rec_nombre)
-        num_f = filtro_vane(rec_numero)
-
-        # Lectura
-        nombre_txt = pytesseract.image_to_string(nom_f, config='--psm 3').strip()
-        numero_txt = pytesseract.image_to_string(num_f, config='--psm 3').strip()
-
-        # Limpieza
-        nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
-        if any(x in nombre_txt.lower() for x in ["krok", "rokor", "korok"]):
-            nombre_limpio = "Krokorok"
-        
-        solo_num = "".join(filter(str.isdigit, numero_txt.split('/')[0] if '/' in numero_txt else numero_txt))
-        if len(solo_num) > 3: solo_num = solo_num[:3]
-        solo_num = solo_num.lstrip('0')
-
-        if len(nombre_limpio) > 2:
-            with st.spinner('🌟 ¡Consultando la Pokédex de precios...!'):
-                res = Card.where(q=f'name:"{nombre_limpio}" number:"{solo_num}"')
+            # Convertimos a escala de grises de forma segura
+            if len(img_array.shape) == 3: # Si tiene color
+                if img_array.shape[2] == 4: # Si tiene canal alpha (transparencia de iPhone)
+                    img_array = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
+                gris = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+            else:
+                gris = img_array
                 
-                if not res:
-                    res = Card.where(q=f'name:"{nombre_limpio}"')
+            img_redim = cv2.resize(gris, (1000, 1400))
+            
+            # --- PROCESAMIENTO QUIRÚRGICO DE DANTE ---
+            # Nombre: Letras negras
+            rec_nom_gris = img_redim[35:160, 150:850]
+            _, bin_nom = cv2.threshold(rec_nom_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            
+            # Número: INVERSIÓN (Para letras blancas)
+            rec_num_gris = img_redim[1300:1375, 50:600]
+            inv_num = cv2.bitwise_not(rec_num_gris)
+            _, bin_num = cv2.threshold(inv_num, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+            # Lectura
+            n_txt = pytesseract.image_to_string(bin_nom, config='--psm 7').strip()
+            u_txt = pytesseract.image_to_string(bin_num, config='--psm 7').strip()
+
+            nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
+            if "krok" in n_txt.lower(): nombre_l = "Krokorok"
+            if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
+            if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
+
+            # Extraer números
+            nums = re.findall(r'\d+', u_txt)
+            if len(nums) >= 2:
+                numero_l = nums[0].lstrip('0')
+                total_l = nums[1]
+                if not numero_l and nums[0]: numero_l = nums[0][-1]
+            elif len(nums) == 1:
+                numero_l = nums[0].lstrip('0')
+
+            with st.expander("🛠️ Ver ajustes técnicos"):
+                st.image(bin_nom, caption=f"Leído: {nombre_l}")
+                st.image(bin_num, caption=f"Leído: {numero_l} / {total_l}")
+
+        # --- BÚSQUEDA ---
+        if len(nombre_l) >= 2:
+            with st.spinner('🌟 ¡Consultando la Pokédex de precios...!'):
+                q = f'name:"{nombre_l}" number:"{numero_l}"'
+                if total_l: q += f' set.printedTotal:{total_l}'
+                res = Card.where(q=q)
+                
+                if not res: res = Card.where(q=f'name:"{nombre_l}" number:"{numero_l}"')
+                if not res: res = Card.where(q=f'name:"{nombre_l}"')
                 
                 if res:
                     c = res[0]
-                    
-                    st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴") # Usamos 🔴 como Pokébola
+                    st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴")
                     st.divider()
                     
-                    # --- MOSTRAR IMAGEN DE LA CARTA ---
                     st.markdown("### ✨ ¡Tus amigos están celebrando! ✨")
                     col_carta, col_info = st.columns([1, 2])
                     with col_carta:
-                        # Imagen oficial de la carta
                         st.image(c.images.large, caption=c.name, use_column_width=True)
                     with col_info:
                         st.write(f"**Nombre:** {c.name}")
                         st.write(f"**Expansión:** {c.set.name} (#{c.number}/{c.set.printedTotal})")
+                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'Común'}")
                     st.divider()
                     
-                    # Precios
                     precios = c.tcgplayer.prices if c.tcgplayer else None
                     p = None
                     if precios:
@@ -150,14 +148,11 @@ if foto_vane:
                         val_usd = p.market
                         val_mxn = val_usd * TIPO_CAMBIO
                         
-                        # --- JOLTEON CELEBRANDO ---
-                        # Jolteon de PokeAPI celebrando con una Pokébola
                         st.markdown("<div class='jolteon-celebra'>", unsafe_allow_html=True)
                         st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=200)
                         st.caption("¡Jolteon usó Trueno en los precios!")
                         st.markdown("</div>", unsafe_allow_html=True)
                         
-                        # --- MÉTRICAS BONITAS (AMARILLAS CON TEXTO NEGRO) ---
                         m1, m2 = st.columns(2)
                         m1.metric("PRECIO MXN", f"${val_mxn:.2f}")
                         m2.metric("PRECIO USD", f"${val_usd:.2f}")
@@ -165,17 +160,11 @@ if foto_vane:
                     else:
                         st.warning("💎 Carta identificada, pero no tiene precio de mercado hoy.")
                 else:
-                    st.error("❌ No encontré esa carta. Intenta con una foto más clara.")
-        
-        # Detalles técnicos (Escondidos por default)
-        with st.expander("🛠️ Ver ajustes técnicos"):
-            st.image(nom_f, caption=f"Lectura Nombre: {nombre_limpio}")
-            st.image(num_f, caption=f"Lectura Número: {solo_num}")
+                    st.error("❌ No encontré esa carta. Intenta la búsqueda manual.")
+        else:
+            if foto_vane: st.warning("⚠️ No pude leer el nombre. Asegúrate de enfocar bien.")
 
     except Exception as e:
-        # Hacemos el error más amigable y evitamos el crasheo visual
-        error_str = str(e)
-        if "empty" in error_str.lower() or "resize" in error_str.lower():
-            st.warning("⚠️ Hubo un pequeño fallo al leer la imagen. Por favor, cierra la foto actual y vuelve a seleccionarla en la galería.")
-        else:
-            st.error(f"¡Ups! Algo técnico falló. Detalles para Neri: {error_str}")
+        st.error("❌ Ocurrió un error técnico al procesar la imagen.")
+        with st.expander("🛠️ Detalles del error para Neri (Desarrollador)"):
+            st.code(traceback.format_exc())
