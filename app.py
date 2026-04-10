@@ -27,14 +27,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚡ PokéVane Gold Edition")
+st.title("⚡ PokéVane ⚡")
 
 # --- BIENVENIDA CON JOLTEON ---
 col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nSubre tu foto para descubrir el valor y la rareza de tu carta.")
+    st.write("### ✨ ¡Hola Vane! \nSube tu foto para descubrir el valor y la rareza de tu carta.")
 
 st.divider()
 
@@ -43,7 +43,7 @@ tab_gal, tab_cam = st.tabs(["📁 Galería (Mejor Enfoque)", "📸 Cámara"])
 foto_vane = None
 
 with tab_gal:
-    galeria = st.file_uploader("Sube tu foto de iPhone aquí", type=['jpg', 'jpeg', 'png'])
+    galeria = st.file_uploader("Sube tu carta aquí", type=['jpg', 'jpeg', 'png'])
     if galeria: foto_vane = galeria
 with tab_cam:
     camara = st.camera_input("Escanear ahora")
