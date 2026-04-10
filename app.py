@@ -8,7 +8,6 @@ from pokemontcgsdk import Card
 TIPO_CAMBIO = 18.20
 st.set_page_config(page_title="PokéVane Gold ✨", page_icon="⚡", layout="centered")
 
-# --- CSS LOOK ELÉCTRICO ---
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffcb05; }
@@ -25,19 +24,11 @@ col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nEscanea cualquier carta. Si no la leo a la primera, intenta acercarte al nombre.")
+    st.write("### ✨ ¡Hola Vane! \nEscanea tu carta para encontrar su edición exacta.")
 
 st.divider()
 
-tab_gal, tab_cam = st.tabs(["📁 Galería", "📸 Cámara"])
-foto_vane = None
-
-with tab_gal:
-    galeria = st.file_uploader("Sube tu foto aquí", type=['jpg', 'jpeg', 'png'])
-    if galeria: foto_vane = galeria
-with tab_cam:
-    camara = st.camera_input("Escanear ahora")
-    if camara: foto_vane = camara
+foto_vane = st.file_uploader("Sube tu foto o captura", type=['jpg', 'jpeg', 'png'])
 
 if foto_vane:
     try:
@@ -45,46 +36,57 @@ if foto_vane:
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Filtro de nitidez
         gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
         final_img = cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
 
-        # --- ESTRATEGIA DE LECTURA ---
-        # 1. Intentamos los recortes que calibramos (Plan A)
+        # 1. Recortes
         rec_nom = final_img[40:160, 150:800]
-        rec_num = final_img[1300:1370, 50:500]
+        rec_num = final_img[1300:1375, 50:600] # Ampliamos un poco para captar el total
         
         nom_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
         num_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
 
-        # Limpieza básica
-        def limpiar_nom(t):
-            res = "".join(filter(str.isalpha, t))
-            if any(x in t.lower() for x in ["krok", "rokor", "korok"]): return "Krokorok"
-            return res
+        # 2. Limpieza de Nombre
+        nombre = "".join(filter(str.isalpha, nom_txt))
+        if any(x in nom_txt.lower() for x in ["krok", "rokor", "korok"]): nombre = "Krokorok"
 
-        nombre = limpiar_nom(nom_txt)
-        numero = "".join(filter(str.isdigit, num_txt.split('/')[0] if '/' in num_txt else num_txt))[:3].lstrip('0')
+        # 3. IDENTIFICACIÓN DE SERIE COMPLETA (Eje: 005/198)
+        solo_num = ""
+        total_set = ""
+        
+        if "/" in num_txt:
+            partes = num_txt.split('/')
+            solo_num = "".join(filter(str.isdigit, partes[0]))
+            total_set = "".join(filter(str.isdigit, partes[1]))
+        else:
+            # Si no leyó la diagonal, intentamos extraer los números que haya
+            nums = "".join(filter(str.isdigit, num_txt))
+            if len(nums) >= 4: # Probablemente leyó algo como 005198
+                solo_num = nums[:3].lstrip('0')
+                total_set = nums[3:]
+            else:
+                solo_num = nums.lstrip('0')
 
-        # 2. SI EL PLAN A FALLA (PLAN B: Leer toda la franja superior)
-        if len(nombre) < 3:
-            franja_sup = final_img[30:250, 50:950]
-            nom_txt_b = pytesseract.image_to_string(franja_sup, config='--psm 11').strip()
-            nombre = limpiar_nom(nom_txt_b)
+        # Limpiar ceros a la izquierda para la búsqueda
+        solo_num = solo_num.lstrip('0') if solo_num else ""
 
-        # Mostramos qué estamos viendo
         with st.expander("🛠️ Ver qué está leyendo PokéVane"):
-            st.image(rec_nom, caption=f"Detectado arriba: {nombre}")
-            st.image(rec_num, caption=f"Detectado abajo: {numero}")
+            st.image(rec_nom, caption=f"Detectado: {nombre}")
+            st.image(rec_num, caption=f"Detectado: {solo_num} de {total_set}")
 
         if len(nombre) >= 3:
-            with st.spinner(f'Buscando {nombre}...'):
-                # Búsqueda flexible
-                query = f'name:"{nombre}"'
-                if numero: query += f' number:"{numero}"'
+            with st.spinner(f'Buscando {nombre} #{solo_num}/{total_set}...'):
+                # BÚSQUEDA NIVEL MAESTRO: Nombre + Número + Total del Set
+                query = f'name:"{nombre}" number:"{solo_num}"'
+                if total_set:
+                    query += f' set.printedTotal:{total_set}'
                 
                 res = Card.where(q=query)
                 
+                # Respaldo por si el total del set falló
+                if not res:
+                    res = Card.where(q=f'name:"{nombre}" number:"{solo_num}"')
+
                 if res:
                     c = res[0]
                     st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴")
@@ -95,7 +97,7 @@ if foto_vane:
                         st.write(f"### {c.name}")
                         st.write(f"**Expansión:** {c.set.name}")
                         st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
-                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'N/A'}")
+                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'Común'}")
 
                     # Precios
                     p = None
@@ -112,11 +114,9 @@ if foto_vane:
                     else:
                         st.warning("Carta encontrada, pero no tiene precio de mercado.")
                 else:
-                    st.error(f"No encontré a '{nombre}' en la base de datos. Revisa si el nombre está bien escrito.")
+                    st.error(f"No encontré la edición exacta de {nombre}.")
         else:
-            st.warning("⚠️ No pude leer el nombre. Intenta que el nombre del Pokémon se vea muy grande en la foto.")
+            st.warning("⚠️ No pude leer el nombre. Intenta otra foto.")
 
     except Exception as e:
-        # Esto evita el error rojo feo y nos da una pista
-        st.info("💡 Tip: Asegúrate de que la carta esté bien derecha y con buena luz.")
-        print(f"Error técnico: {e}")
+        st.info("💡 Tip: Asegúrate de que la carta esté bien derecha.")
