@@ -29,7 +29,7 @@ st.markdown("""
 
     /* Títulos y textos */
     h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; text-align: center; }
-    h3 { color: #ffcb05; text-align: center; }
+    h3 { color: #ffcb05; }
     .stAlert { border-radius: 20px; border: 2px solid #ffcb05; background-color: #111111; color: #ffcb05; }
     
     /* Pestañas */
@@ -39,14 +39,20 @@ st.markdown("""
 
     /* Divisores */
     hr { border: 1px solid #3b4cca; }
-    
-    /* Centrar imágenes */
-    div.stImage { text-align: center; }
     </style>
-    """, unsafe_allow_html=True)
+    """, unsafe_allow_stdio=True)
 
+# Título y Bienvenida
 st.title("⚡ PokéVane Gold Edition")
-st.write("---")
+
+# --- MINI COMPAÑEROS DE ENTRADA ---
+col_jolteon_mini, col_sandslash_mini = st.columns([1, 10]) # Jolteon es el principal
+with col_jolteon_mini:
+    st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=50) # Jolteon
+with col_sandslash_mini:
+    st.write("### ✨ ¡Hola Vane! Listos para valuar tus cartas.")
+
+st.divider()
 
 # --- MENÚ DE ENTRADA ---
 tab_galeria, tab_camara = st.tabs(["📁 Subir de Galería", "📸 Usar Cámara"])
@@ -81,11 +87,11 @@ if foto_vane:
         nom_f = filtro_vane(rec_nombre)
         num_f = filtro_vane(rec_numero)
 
-        # Lectura Tesseract
+        # Lectura
         nombre_txt = pytesseract.image_to_string(nom_f, config='--psm 3').strip()
         numero_txt = pytesseract.image_to_string(num_f, config='--psm 3').strip()
 
-        # Limpieza de datos
+        # Limpieza
         nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
         if any(x in nombre_txt.lower() for x in ["krok", "rokor", "korok"]):
             nombre_limpio = "Krokorok"
@@ -104,24 +110,11 @@ if foto_vane:
                 if res:
                     c = res[0]
                     
-                    # 🎉 ÉXITO 🎉
-                    st.success(f"### ⚽️ ¡CARTA LOCALIZADA! ⚽️")
+                    st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴") # Usamos 🔴 como Pokébola
+                    st.divider()
                     
-                    # --- MOSTRAR IMAGEN OFICIAL DE LA CARTA ---
-                    if c.images and c.images.large:
-                        st.markdown("### ✨ Carta Escaneada: ✨")
-                        # Mostramos la imagen grande oficial, centrada y con un ancho de 300px
-                        st.image(c.images.large, width=300)
-                    
-                    st.markdown("#### Detalle de la Carta")
-                    col_det1, col_det2 = st.columns(2)
-                    with col_det1:
-                        st.write(f"**Nombre:** {c.name}")
-                        st.write(f"**Expansión:** {c.set.name}")
-                    with col_det2:
-                        st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
-                        st.write(f"**Rareza:** {getattr(c, 'rarity', 'Desconocida')}")
-                    
+                    st.write(f"**Nombre:** {c.name}")
+                    st.write(f"**Expansión:** {c.set.name} (#{c.number}/{c.set.printedTotal})")
                     st.divider()
                     
                     # Precios
@@ -134,17 +127,23 @@ if foto_vane:
                         val_usd = p.market
                         val_mxn = val_usd * TIPO_CAMBIO
                         
-                        # --- MÉTRICAS BONITAS ---
-                        m1, m2 = st.columns(2)
-                        m1.metric("PRECIO MXN", f"${val_mxn:.2f}")
-                        m2.metric("PRECIO USD", f"${val_usd:.2f}")
-                        st.caption("✨ Precios de mercado actuales (TCGPlayer)")
+                        # --- JOLTEON CELEBRANDO ---
+                        col_precios, col_jolteon = st.columns([2, 1])
+                        with col_jolteon:
+                            # Jolteon de PokeAPI sosteniendo una Pokébola
+                            st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=150)
+                            st.caption("¡Jolteon usó Trueno en los precios!")
+                        with col_precios:
+                            # --- MÉTRICAS BONITAS (AMARILLAS CON TEXTO NEGRO) ---
+                            st.metric("PRECIO MXN", f"${val_mxn:.2f}")
+                            st.metric("PRECIO USD", f"${val_usd:.2f}")
+                            st.caption("✨ Precios de mercado actuales (TCGPlayer)")
                     else:
                         st.warning("💎 Carta identificada, pero no tiene precio de mercado hoy.")
                 else:
                     st.error("❌ No encontré esa carta. Intenta con una foto más clara.")
         
-        # Detalles técnicos (Escondidos)
+        # Detalles técnicos (Escondidos por default)
         with st.expander("🛠️ Ver ajustes técnicos"):
             st.image(nom_f, caption=f"Lectura Nombre: {nombre_limpio}")
             st.image(num_f, caption=f"Lectura Número: {solo_num}")
