@@ -24,7 +24,7 @@ col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nEscanea tu carta para encontrar su edición exacta.")
+    st.write("### ✨ ¡Hola Vane! \nLas cartas 'ex' brillan mucho, intenta que no les dé la luz directo.")
 
 st.divider()
 
@@ -37,55 +37,65 @@ if foto_vane:
         img_redim = cv2.resize(img, (1000, 1400))
         
         gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
-        final_img = cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
+        # Filtro especial para eliminar brillo (morfología)
+        kernel = np.ones((2,2), np.uint8)
+        final_img = cv2.morphologyEx(gris, cv2.MORPH_OPEN, kernel)
+        final_img = cv2.convertScaleAbs(final_img, alpha=1.6, beta=10)
 
-        # 1. Recortes
-        rec_nom = final_img[40:160, 150:800]
-        rec_num = final_img[1300:1375, 50:600] # Ampliamos un poco para captar el total
+        # 1. RECORTES DE PRECISIÓN PARA EX
+        rec_nom = final_img[35:155, 170:750] # Un poco más arriba
+        rec_num = final_img[1315:1355, 140:400] # Super ajustado para evitar el texto de abajo
         
+        # Lectura con PSM 11 (ideal para texto con ruido)
         nom_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
-        num_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
+        num_txt = pytesseract.image_to_string(rec_num, config='--psm 7').strip()
 
-        # 2. Limpieza de Nombre
-        nombre = "".join(filter(str.isalpha, nom_txt))
-        if any(x in nom_txt.lower() for x in ["krok", "rokor", "korok"]): nombre = "Krokorok"
+        # 2. LIMPIEZA DE NOMBRE (Especial Arcanine/EX)
+        # Si detectamos "ex" o algo parecido, limpiamos el resto del ruido
+        nombre_crudo = nom_txt.replace('\n', ' ')
+        palabras = nombre_crudo.split()
+        nombre_limpio = ""
+        for p in palabras:
+            p_limpia = "".join(filter(str.isalpha, p))
+            if len(p_limpia) > 2:
+                nombre_limpio = p_limpia
+                break
+        
+        if "rcanine" in nombre_limpio.lower(): nombre_limpio = "Arcanine"
 
-        # 3. IDENTIFICACIÓN DE SERIE COMPLETA (Eje: 005/198)
+        # 3. IDENTIFICACIÓN DE SERIE
         solo_num = ""
         total_set = ""
         
-        if "/" in num_txt:
-            partes = num_txt.split('/')
-            solo_num = "".join(filter(str.isdigit, partes[0]))
-            total_set = "".join(filter(str.isdigit, partes[1]))
-        else:
-            # Si no leyó la diagonal, intentamos extraer los números que haya
-            nums = "".join(filter(str.isdigit, num_txt))
-            if len(nums) >= 4: # Probablemente leyó algo como 005198
-                solo_num = nums[:3].lstrip('0')
-                total_set = nums[3:]
+        # Buscamos números ignorando letras (como el "de" que leyó antes)
+        nums_encontrados = re.findall(r'\d+', num_txt)
+        if len(nums_encontrados) >= 2:
+            solo_num = nums_encontrados[0]
+            total_set = nums_encontrados[1]
+        elif len(nums_encontrados) == 1:
+            # Si solo detectó un bloque (ej: 032198), lo dividimos
+            n = nums_encontrados[0]
+            if len(n) > 3:
+                solo_num = n[:3]
+                total_set = n[3:]
             else:
-                solo_num = nums.lstrip('0')
+                solo_num = n
 
-        # Limpiar ceros a la izquierda para la búsqueda
-        solo_num = solo_num.lstrip('0') if solo_num else ""
+        with st.expander("🛠️ Ver ajustes técnicos"):
+            st.image(rec_nom, caption=f"Nombre: {nombre_limpio}")
+            st.image(rec_num, caption=f"Número: {solo_num}/{total_set}")
 
-        with st.expander("🛠️ Ver qué está leyendo PokéVane"):
-            st.image(rec_nom, caption=f"Detectado: {nombre}")
-            st.image(rec_num, caption=f"Detectado: {solo_num} de {total_set}")
-
-        if len(nombre) >= 3:
-            with st.spinner(f'Buscando {nombre} #{solo_num}/{total_set}...'):
-                # BÚSQUEDA NIVEL MAESTRO: Nombre + Número + Total del Set
-                query = f'name:"{nombre}" number:"{solo_num}"'
-                if total_set:
-                    query += f' set.printedTotal:{total_set}'
-                
+        if len(nombre_limpio) >= 3:
+            with st.spinner('🌟 Buscando en la base de datos...'):
+                # Búsqueda por nombre y número
+                query = f'name:"{nombre_limpio}" number:"{solo_num}"'
                 res = Card.where(q=query)
                 
-                # Respaldo por si el total del set falló
+                # Respaldo solo nombre
                 if not res:
-                    res = Card.where(q=f'name:"{nombre}" number:"{solo_num}"')
+                    res = Card.where(q=f'name:"{nombre_limpio} ex"')
+                if not res:
+                    res = Card.where(q=f'name:"{nombre_limpio}"')
 
                 if res:
                     c = res[0]
@@ -97,13 +107,13 @@ if foto_vane:
                         st.write(f"### {c.name}")
                         st.write(f"**Expansión:** {c.set.name}")
                         st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
-                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'Común'}")
+                        st.write(f"**💎 Rareza:** {c.rarity}")
 
                     # Precios
                     p = None
                     if c.tcgplayer and c.tcgplayer.prices:
                         pr = c.tcgplayer.prices
-                        p = getattr(pr, 'normal', None) or getattr(pr, 'holofoil', None) or getattr(pr, 'reverseHolofoil', None)
+                        p = getattr(pr, 'holofoil', None) or getattr(pr, 'normal', None) or getattr(pr, 'reverseHolofoil', None)
                     
                     if p and hasattr(p, 'market'):
                         v_usd = p.market
@@ -112,11 +122,9 @@ if foto_vane:
                         m1.metric("PRECIO MXN", f"${v_usd * TIPO_CAMBIO:.2f}")
                         m2.metric("PRECIO USD", f"${v_usd:.2f}")
                     else:
-                        st.warning("Carta encontrada, pero no tiene precio de mercado.")
+                        st.warning("Carta encontrada, pero sin precio hoy.")
                 else:
-                    st.error(f"No encontré la edición exacta de {nombre}.")
-        else:
-            st.warning("⚠️ No pude leer el nombre. Intenta otra foto.")
-
+                    st.error("No pude encontrar la edición exacta.")
     except Exception as e:
-        st.info("💡 Tip: Asegúrate de que la carta esté bien derecha.")
+        import re # Necesario para la limpieza de números
+        st.info("Tip: Intenta que la foto no tenga reflejos de luz.")
