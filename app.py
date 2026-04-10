@@ -52,28 +52,42 @@ if foto_vane or manual_ready:
             file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_redim = cv2.resize(img, (1000, 1400))
+            
+            # --- FILTRO SUTIL Y NATURAL ---
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
-            final_img = cv2.convertScaleAbs(gris, alpha=1.7, beta=10)
+            # Solo aumentamos el brillo ligeramente sin quemar el contraste
+            # Antes alpha=1.7, ahora alpha=1.2 (suave)
+            final_img = cv2.convertScaleAbs(gris, alpha=1.2, beta=15)
 
+            # Recortes
             rec_nom = final_img[35:160, 150:850]
             rec_num = final_img[1300:1375, 50:600]
             
             n_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
-            u_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
+            # PSM 7 es mejor para una sola línea de texto
+            u_txt = pytesseract.image_to_string(rec_num, config='--psm 7').strip()
 
+            # Limpieza básica
             nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
-            if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # --- CORRECCIÓN DE NÚMEROS ---
+            # --- CORRECCIÓN DE NÚMEROS MEJORADA ---
             nums = re.findall(r'\d+', u_txt)
             if len(nums) >= 2:
                 numero_l = nums[0].lstrip('0')
                 total_l = nums[1]
-                if not numero_l and nums[0]: numero_l = nums[0][-1] # Si era '005' y falló, toma el '5'
+                # Si el número quedó vacío porque era '000', le ponemos el último dígito
+                if not numero_l and nums[0]: numero_l = nums[0][-1] 
             elif len(nums) == 1:
-                numero_l = nums[0].lstrip('0')
+                # Si solo detectó un bloque de números, intentamos separarlo
+                # Esto es útil si leyó algo como '005198'
+                n = nums[0]
+                if len(n) > 3:
+                    numero_l = n[:len(n)-3].lstrip('0')
+                    total_l = n[len(n)-3:]
+                else:
+                    numero_l = n.lstrip('0')
 
             with st.expander("🛠️ Detalles Técnicos"):
                 st.image(rec_nom, caption=f"Leído: {nombre_l}")
@@ -81,12 +95,13 @@ if foto_vane or manual_ready:
 
         if len(nombre_l) >= 2:
             with st.spinner('Buscando...'):
-                # Intento 1: Todo junto
+                # Intento 1: Exacto (Nombre + Número + Total del set)
                 q = f'name:"{nombre_l}" number:"{numero_l}"'
                 if total_l: q += f' set.printedTotal:{total_l}'
                 res = Card.where(q=q)
                 
                 if not res:
+                    # Intento 2: Solo nombre y numero (Flexible)
                     res = Card.where(q=f'name:"{nombre_l}" number:"{numero_l}"')
                 
                 if res:
