@@ -9,20 +9,19 @@ TIPO_CAMBIO = 18.20
 
 st.set_page_config(page_title="PokéVane Gold", page_icon="✨", layout="centered")
 
-# Estilo personalizado para ponerlo "bonito"
+# Estilo corregido (Cambiado unsafe_allow_stdio por unsafe_allow_html)
 st.markdown("""
     <style>
     .main { background-color: #f0f2f6; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); }
-    .stAlert { border-radius: 15px; }
-    h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; }
+    div[data-testid="stMetric"] { background-color: #ffffff; padding: 15px; border-radius: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1); }
+    h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black', sans-serif; text-align: center; }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 st.title("✨ PokéVane Gold Edition")
 st.write("---")
 
-# --- MENÚ DE ENTRADA (Galería primero por default) ---
+# --- MENÚ DE ENTRADA ---
 tab_galeria, tab_camara = st.tabs(["📁 Subir de Galería", "📸 Usar Cámara"])
 
 foto_vane = None
@@ -32,7 +31,7 @@ with tab_galeria:
     if galeria: foto_vane = galeria
 
 with tab_camara:
-    st.info("Nota: Para mejor enfoque, usa la galería.")
+    st.info("💡 Tip: Para mejor enfoque, usa la cámara normal y sube la foto desde Galería.")
     camara = st.camera_input("Escanear")
     if camara: foto_vane = camara
 
@@ -43,7 +42,7 @@ if foto_vane:
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Recortes calibrados (Los que funcionaron perfecto)
+        # Recortes calibrados
         rec_nombre = img_redim[40:160, 150:800]
         rec_numero = img_redim[1305:1345, 100:450] 
 
@@ -68,7 +67,7 @@ if foto_vane:
         solo_num = solo_num.lstrip('0')
 
         if len(nombre_limpio) > 2:
-            with st.spinner('🌟 ¡Buscando en la Pokédex de precios...!'):
+            with st.spinner('🌟 ¡Consultando la Pokédex...!'):
                 res = Card.where(q=f'name:"{nombre_limpio}" number:"{solo_num}"')
                 
                 if not res:
@@ -76,7 +75,7 @@ if foto_vane:
                 
                 if res:
                     c = res[0]
-                    st.balloons() # ¡Efecto de globos para Vane!
+                    st.balloons() # ¡Efecto de globos!
                     
                     st.success(f"### ✅ ¡CARTA LOCALIZADA!")
                     
@@ -98,7 +97,6 @@ if foto_vane:
                         val_mxn = val_usd * TIPO_CAMBIO
                         
                         st.divider()
-                        # MÉTRICAS LINDAS
                         m1, m2 = st.columns(2)
                         m1.metric("PRECIO MXN", f"${val_mxn:.2f}")
                         m2.metric("PRECIO USD", f"${val_usd:.2f}")
@@ -106,12 +104,12 @@ if foto_vane:
                     else:
                         st.warning("💎 Carta identificada, pero no tiene un precio de mercado activo.")
                 else:
-                    st.error("❌ No encontré esa carta. Intenta con una foto más clara.")
+                    st.error("❌ No encontré esa carta. Revisa que el nombre y el número se vean bien.")
         
-        # Mostrar recortes al final (como modo técnico para ti, Neri)
-        with st.expander("🛠️ Ver detalles técnicos"):
-            st.image(nom_f, caption=f"Lectura: {nombre_limpio}")
-            st.image(num_f, caption=f"Número: {solo_num}")
+        # Detalles técnicos escondidos
+        with st.expander("🛠️ Ver ajustes técnicos"):
+            st.image(nom_f, caption=f"Lectura Nombre: {nombre_limpio}")
+            st.image(num_f, caption=f"Lectura Número: {solo_num}")
 
     except Exception as e:
-        st.error(f"¡Ups! Algo falló: {e}")
+        st.error(f"¡Ups! Algo falló en el escaneo: {e}")
