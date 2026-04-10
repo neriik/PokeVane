@@ -25,7 +25,7 @@ col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nSubre tu foto y deja que Jolteon use su 'Filtro de Cristal' para leer tu carta.")
+    st.write("### ✨ ¡Hola Vane! \nEscaneando con máxima precisión...")
 
 st.divider()
 
@@ -38,9 +38,9 @@ with tab_gal:
     if galeria: foto_vane = galeria
 
 with tab_manual:
-    m_nom = st.text_input("Nombre del Pokémon")
-    m_num = st.text_input("Número de carta")
-    m_tot = st.text_input("Total del set (Opcional)")
+    m_nom = st.text_input("Nombre")
+    m_num = st.text_input("Número")
+    m_tot = st.text_input("Total del set")
     if st.button("Buscar ahora 🔍"): manual_ready = True
 
 # --- PROCESAMIENTO ---
@@ -51,47 +51,46 @@ if foto_vane or manual_ready:
         if manual_ready:
             nombre_l, numero_l, total_l = m_nom, m_num, m_tot
         else:
-            # 1. Cargar imagen
             file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
             img = cv2.imdecode(file_bytes, 1)
             img_redim = cv2.resize(img, (1000, 1400))
             
-            # --- FILTRO DE CRISTAL DE DANTE ---
+            # --- PROCESAMIENTO BINARIO (OTSU) ---
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
-            
-            # CLAHE (Contrast Limited Adaptive Histogram Equalization)
-            # Esto mejora el contraste local sin "quemar" la imagen
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            final_img = clahe.apply(gris)
+            # Aplicamos un desenfoque leve para quitar ruido de píxeles
+            blur = cv2.GaussianBlur(gris, (5,5), 0)
+            # El Umbral de Otsu separa fondo de letras perfectamente
+            _, binaria = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
             # Recortes
-            rec_nom = final_img[35:160, 150:850]
-            rec_num = final_img[1300:1375, 50:600]
+            rec_nom = binaria[35:160, 150:850]
+            rec_num = binaria[1300:1375, 50:600]
             
-            # Lectura Tesseract con PSM 3 (Auto detección)
-            n_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
-            u_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
+            # Forzamos lectura de una sola línea
+            n_txt = pytesseract.image_to_string(rec_nom, config='--psm 7').strip()
+            u_txt = pytesseract.image_to_string(rec_num, config='--psm 7').strip()
 
-            # Limpieza de Nombre
+            # Limpieza básica
             nombre_l = "".join(filter(str.isalpha, n_txt.split()[0] if n_txt else ""))
-            if "rcanine" in n_txt.lower(): nombre_l = "Arcanine"
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
+            if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # Limpieza de Números con Regex
+            # Limpieza de números
             nums = re.findall(r'\d+', u_txt)
             if len(nums) >= 2:
-                numero_l, total_l = nums[0].lstrip('0'), nums[1]
+                numero_l = nums[0].lstrip('0')
+                total_l = nums[1]
                 if not numero_l and nums[0]: numero_l = nums[0][-1]
             elif len(nums) == 1:
                 numero_l = nums[0].lstrip('0')
 
-            with st.expander("🛠️ Ver qué está leyendo PokéVane"):
-                st.image(rec_nom, caption=f"Nombre: {nombre_l}")
-                st.image(rec_num, caption=f"Número: {numero_l} / {total_l}")
+            with st.expander("🛠️ Detalles Técnicos"):
+                st.image(rec_nom, caption=f"Leído: {nombre_l}")
+                st.image(rec_num, caption=f"Leído: {numero_l} de {total_l}")
 
         # --- BÚSQUEDA ---
-        if len(nombre_l) >= 2:
+        if len(nombre_l) >= 3:
             with st.spinner('🌟 Buscando...'):
                 q = f'name:"{nombre_l}" number:"{numero_l}"'
                 if total_l: q += f' set.printedTotal:{total_l}'
@@ -102,7 +101,7 @@ if foto_vane or manual_ready:
                 
                 if res:
                     c = res[0]
-                    st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴")
+                    st.success(f"### 🔴 ¡LOCALIZADA! 🔴")
                     col1, col2 = st.columns([1, 1.2])
                     with col1:
                         st.image(c.images.large)
@@ -116,7 +115,7 @@ if foto_vane or manual_ready:
                     p = None
                     if c.tcgplayer and c.tcgplayer.prices:
                         pr = c.tcgplayer.prices
-                        p = getattr(pr, 'holofoil', None) or getattr(pr, 'normal', None) or getattr(pr, 'reverseHolofoil', None)
+                        p = getattr(pr, 'normal', None) or getattr(pr, 'holofoil', None) or getattr(pr, 'reverseHolofoil', None)
                     
                     if p and hasattr(p, 'market'):
                         v_usd = p.market
@@ -126,6 +125,9 @@ if foto_vane or manual_ready:
                     else:
                         st.warning("Sin precio disponible.")
                 else:
-                    st.error("No encontré la carta exacta.")
+                    st.error("No se encontró la carta exacta.")
+        else:
+            if foto_vane: st.warning("⚠️ No pude leer bien el nombre. Asegúrate de que no haya sombras.")
+
     except Exception as e:
         st.error(f"Error: {e}")
