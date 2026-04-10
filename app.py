@@ -25,18 +25,23 @@ if foto_vane:
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # --- RECORTE QUIRÚRGICO ---
-        # Subimos el borde inferior de 1395 a 1360 para EVITAR el año ©2025
-        rec_nombre = img_redim[45:155, 180:780]
-        rec_numero = img_redim[1300:1360, 240:480] # Más a la derecha para captar el 058/086 mejor
+        # --- RECORTE CALIBRADO ---
+        # Nombre: Un poco más alto para captar bien las letras
+        rec_nombre = img_redim[40:160, 150:800]
+        # Número: Más a la IZQUIERDA (desde 150) para captar el 058/086 completo
+        rec_numero = img_redim[1300:1375, 150:550] 
 
-        def limpiar(crop):
+        # --- FILTRO DE ALTO CONTRASTE (PARA LETRAS BLANCAS) ---
+        def filtro_fuerte(crop):
             gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            return cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
+            # Invertimos para que las letras blancas sean negras (clave para OCR)
+            _, binaria = cv2.threshold(gris, 150, 255, cv2.THRESH_BINARY_INV)
+            return binaria
 
-        nom_f = limpiar(rec_nombre)
-        num_f = limpiar(rec_numero)
+        nom_f = filtro_fuerte(rec_nombre)
+        num_f = filtro_fuerte(rec_numero)
 
+        # Configuramos Tesseract para buscar una sola línea
         nombre_txt = pytesseract.image_to_string(nom_f, config='--psm 7').strip()
         numero_txt = pytesseract.image_to_string(num_f, config='--psm 7').strip()
 
@@ -45,22 +50,20 @@ if foto_vane:
         if any(x in nombre_txt.lower() for x in ["krok", "rokor", "korok"]):
             nombre_limpio = "Krokorok"
         
-        # Extraer solo el primer grupo de números (el 058)
-        numeros_encontrados = "".join(filter(str.isdigit, numero_txt.split('/')[0] if '/' in numero_txt else numero_txt))
-        # Si el número es muy largo (como el año), nos quedamos solo con los últimos 3 dígitos
-        solo_num = numeros_encontrados[-3:] if len(numeros_encontrados) > 3 else numeros_encontrados
+        # Extraer el número (el 058)
+        partes = numero_txt.split('/')
+        solo_num = "".join(filter(str.isdigit, partes[0]))
         solo_num = solo_num.lstrip('0')
 
-        st.image(nom_f, caption=f"Nombre: {nombre_limpio}")
-        st.image(num_f, caption=f"Número: {solo_num}")
+        st.image(nom_f, caption=f"Lectura Nombre: {nombre_limpio}")
+        st.image(num_f, caption=f"Lectura Número: {solo_num}")
 
         if len(nombre_limpio) > 2:
             with st.spinner(f'Buscando {nombre_limpio} #{solo_num}...'):
-                # Intento 1: Nombre + Número (Exacto)
+                # Búsqueda Exacta
                 res = Card.where(q=f'name:"{nombre_limpio}" number:"{solo_num}"')
                 
                 if res:
-                    # Si hay varios, buscamos el que coincida mejor con el total (086)
                     c = res[0]
                     st.success(f"✅ ¡CARTA LOCALIZADA!")
                     st.subheader(f"{c.name}")
@@ -73,10 +76,10 @@ if foto_vane:
                     
                     if p and hasattr(p, 'market'):
                         mxn = p.market * TIPO_CAMBIO
-                        st.metric("PRECIO EN PESOS", f"${mxn:.2f} MXN")
+                        st.metric("PRECIO ESTIMADO", f"${mxn:.2f} MXN")
                     else:
-                        st.warning("Sin precio de mercado disponible.")
+                        st.warning("Sin precio disponible.")
                 else:
-                    st.error(f"No encontré a {nombre_limpio} con el número {solo_num}.")
+                    st.error(f"No encontré a {nombre_limpio} #{solo_num}. Prueba otra vez.")
     except Exception as e:
         st.error(f"Error: {e}")
