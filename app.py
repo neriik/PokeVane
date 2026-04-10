@@ -54,8 +54,8 @@ if foto_vane or manual_ready:
             img_redim = cv2.resize(img, (1000, 1400))
             gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
 
-            # --- PROCESAMIENTO QUIRÚRGICO ---
-            # Nombre: Filtro Otsu Normal
+            # --- PROCESAMIENTO DIFERENCIADO ---
+            # Nombre: Filtro Otsu Normal (Letras negras)
             rec_nom_gris = gris[35:160, 150:850]
             _, bin_nom = cv2.threshold(rec_nom_gris, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
             
@@ -65,7 +65,7 @@ if foto_vane or manual_ready:
             inv_num = cv2.bitwise_not(rec_num_gris)
             _, bin_num = cv2.threshold(inv_num, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-            # Lectura
+            # Lectura con PSM 7 (Tratar como una sola línea de texto)
             n_txt = pytesseract.image_to_string(bin_nom, config='--psm 7').strip()
             u_txt = pytesseract.image_to_string(bin_num, config='--psm 7').strip()
 
@@ -73,7 +73,7 @@ if foto_vane or manual_ready:
             if "krok" in n_txt.lower(): nombre_l = "Krokorok"
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
 
-            # Extraer números
+            # Extraer números usando Regex de forma segura
             nums = re.findall(r'\d+', u_txt)
             if len(nums) >= 2:
                 numero_l = nums[0].lstrip('0')
@@ -124,7 +124,7 @@ if foto_vane or manual_ready:
                 else:
                     st.error("No se encontró la carta exacta.")
         else:
-            if foto_vane: st.warning("⚠️ No pude leer bien el nombre.")
+            if foto_vane: st.warning("⚠️ No pude leer bien el nombre. Asegúrate de que no haya reflejos.")
 
     except Exception as e:
         st.error(f"Error técnico: {e}")
