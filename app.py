@@ -32,6 +32,7 @@ st.markdown("""
     .stTabs [data-baseweb="tab"][aria-selected="true"] { background-color: #3b4cca; border-radius: 10px; }
     hr { border: 1px solid #3b4cca; }
     .jolteon-celebra { text-align: center; margin-top: 20px; }
+    .mensaje-papa { text-align: center; color: #ffcb05; font-size: 22px; font-style: italic; margin-top: 50px; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -99,27 +100,23 @@ if foto_vane or manual_ready:
             if "cacne" in n_txt.lower(): nombre_l = "Cacnea"
             if "arcan" in n_txt.lower(): nombre_l = "Arcanine"
 
-            # --- NUEVA INTELIGENCIA PARA NÚMEROS ---
+            # Inteligencia para Números
             u_txt_clean = u_txt.replace('O', '0').replace('o', '0')
             
             def limpiar_ceros(n_str):
                 limpio = n_str.lstrip('0')
                 return limpio if limpio else '0'
 
-            # Buscamos explícitamente el patrón XXX/YYY
             match = re.search(r'(\d+)\s*[|/\\7]\s*(\d+)', u_txt_clean)
             
             if match:
                 numero_l = limpiar_ceros(match.group(1))
                 total_l = limpiar_ceros(match.group(2))
             else:
-                # Si no hay diagonal clara, extraemos todos los números
                 nums = re.findall(r'\d+', u_txt_clean)
-                # Filtramos años de copyright (ej: 2023, 2025)
                 nums = [n for n in nums if not (len(n) == 4 and n.startswith(('19', '20')))]
                 
                 if len(nums) >= 2:
-                    # Tomamos siempre los últimos dos números (Ignora los iconos de la izquierda)
                     numero_l = limpiar_ceros(nums[-2])
                     total_l = limpiar_ceros(nums[-1])
                 elif len(nums) == 1:
@@ -183,3 +180,6 @@ if foto_vane or manual_ready:
         st.error("❌ Ocurrió un error técnico al procesar la imagen.")
         with st.expander("🛠️ Detalles del error para Neri (Desarrollador)"):
             st.code(traceback.format_exc())
+
+# --- MENSAJE ESPECIAL ---
+st.markdown("<div class='mensaje-papa'>✨ Con cariño, papá. ✨</div>", unsafe_allow_html=True)
