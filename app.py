@@ -8,42 +8,32 @@ from pokemontcgsdk import Card
 TIPO_CAMBIO = 18.20
 st.set_page_config(page_title="PokéVane Gold ✨", page_icon="⚡", layout="centered")
 
-# --- CSS LOOK ELÉCTRICO (HTML SEGURO) ---
+# --- CSS LOOK ELÉCTRICO ---
 st.markdown("""
     <style>
     .main { background-color: #000000; color: #ffcb05; }
     [data-testid="stMetricValue"] { color: #000000 !important; font-family: 'Arial Black'; font-size: 35px; }
-    [data-testid="stMetricLabel"] { color: #3b4cca !important; font-weight: bold; }
-    div[data-testid="stMetric"] { 
-        background-color: #ffcb05; 
-        padding: 20px; 
-        border-radius: 20px; 
-        border: 3px solid #3b4cca;
-        box-shadow: 0px 5px 15px rgba(255, 203, 5, 0.4);
-    }
+    div[data-testid="stMetric"] { background-color: #ffcb05; padding: 20px; border-radius: 20px; border: 3px solid #3b4cca; }
     h1 { color: #ffcb05; text-shadow: 2px 2px #3b4cca; font-family: 'Arial Black'; text-align: center; }
-    .stAlert { border-radius: 20px; border: 2px solid #ffcb05; background-color: #111111; }
-    .jolteon-celebra { text-align: center; margin: 20px 0; }
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚡ PokéVane ⚡")
+st.title("⚡ PokéVane Gold Edition")
 
-# --- BIENVENIDA CON JOLTEON ---
+# --- BIENVENIDA ---
 col_j, col_t = st.columns([1, 4])
 with col_j:
     st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=80)
 with col_t:
-    st.write("### ✨ ¡Hola Vane! \nSube tu foto para descubrir el valor y la rareza de tu carta.")
+    st.write("### ✨ ¡Hola Vane! \nEscanea cualquier carta. Si no la leo a la primera, intenta acercarte al nombre.")
 
 st.divider()
 
-# --- PESTAÑAS (Galería primero como pediste) ---
-tab_gal, tab_cam = st.tabs(["📁 Galería (Mejor Enfoque)", "📸 Cámara"])
+tab_gal, tab_cam = st.tabs(["📁 Galería", "📸 Cámara"])
 foto_vane = None
 
 with tab_gal:
-    galeria = st.file_uploader("Sube tu carta aquí", type=['jpg', 'jpeg', 'png'])
+    galeria = st.file_uploader("Sube tu foto aquí", type=['jpg', 'jpeg', 'png'])
     if galeria: foto_vane = galeria
 with tab_cam:
     camara = st.camera_input("Escanear ahora")
@@ -55,73 +45,78 @@ if foto_vane:
         img = cv2.imdecode(file_bytes, 1)
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Recortes de precisión Neri-calibrados
-        rec_nombre = img_redim[40:160, 150:800]
-        rec_numero = img_redim[1305:1345, 100:450] 
+        # Filtro de nitidez
+        gris = cv2.cvtColor(img_redim, cv2.COLOR_BGR2GRAY)
+        final_img = cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
 
-        def filtro_vane(crop):
-            gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            return cv2.convertScaleAbs(gris, alpha=1.5, beta=10)
-
-        # OCR con PSM 3 para robustez
-        n_txt = pytesseract.image_to_string(filtro_vane(rec_nombre), config='--psm 3').strip()
-        u_txt = pytesseract.image_to_string(filtro_vane(rec_numero), config='--psm 3').strip()
-
-        # Limpieza inteligente
-        nom_l = "".join(filter(str.isalpha, n_txt))
-        if any(x in n_txt.lower() for x in ["krok", "rokor", "korok"]): nom_l = "Krokorok"
+        # --- ESTRATEGIA DE LECTURA ---
+        # 1. Intentamos los recortes que calibramos (Plan A)
+        rec_nom = final_img[40:160, 150:800]
+        rec_num = final_img[1300:1370, 50:500]
         
-        num_l = "".join(filter(str.isdigit, u_txt.split('/')[0] if '/' in u_txt else u_txt))
-        if len(num_l) > 3: num_l = num_l[:3]
-        num_l = num_l.lstrip('0')
+        nom_txt = pytesseract.image_to_string(rec_nom, config='--psm 3').strip()
+        num_txt = pytesseract.image_to_string(rec_num, config='--psm 3').strip()
 
-        if len(nom_l) > 2:
-            with st.spinner('🌟 Consultando la Pokédex...'):
-                res = Card.where(q=f'name:"{nom_l}" number:"{num_l}"')
-                if not res: res = Card.where(q=f'name:"{nom_l}"')
+        # Limpieza básica
+        def limpiar_nom(t):
+            res = "".join(filter(str.isalpha, t))
+            if any(x in t.lower() for x in ["krok", "rokor", "korok"]): return "Krokorok"
+            return res
+
+        nombre = limpiar_nom(nom_txt)
+        numero = "".join(filter(str.isdigit, num_txt.split('/')[0] if '/' in num_txt else num_txt))[:3].lstrip('0')
+
+        # 2. SI EL PLAN A FALLA (PLAN B: Leer toda la franja superior)
+        if len(nombre) < 3:
+            franja_sup = final_img[30:250, 50:950]
+            nom_txt_b = pytesseract.image_to_string(franja_sup, config='--psm 11').strip()
+            nombre = limpiar_nom(nom_txt_b)
+
+        # Mostramos qué estamos viendo
+        with st.expander("🛠️ Ver qué está leyendo PokéVane"):
+            st.image(rec_nom, caption=f"Detectado arriba: {nombre}")
+            st.image(rec_num, caption=f"Detectado abajo: {numero}")
+
+        if len(nombre) >= 3:
+            with st.spinner(f'Buscando {nombre}...'):
+                # Búsqueda flexible
+                query = f'name:"{nombre}"'
+                if numero: query += f' number:"{numero}"'
+                
+                res = Card.where(q=query)
                 
                 if res:
                     c = res[0]
                     st.success(f"### 🔴 ¡CARTA LOCALIZADA! 🔴")
-                    
-                    # --- MOSTRAR CARTA E INFO ---
                     col_img, col_info = st.columns([1, 1.2])
                     with col_img:
-                        st.image(c.images.large, use_column_width=True)
+                        st.image(c.images.large)
                     with col_info:
                         st.write(f"### {c.name}")
                         st.write(f"**Expansión:** {c.set.name}")
                         st.write(f"**ID:** #{c.number}/{c.set.printedTotal}")
-                        # ADICIÓN DE RAREZA
-                        rar = c.rarity if c.rarity else "Desconocida"
-                        st.write(f"**💎 Rareza:** {rar}")
+                        st.write(f"**💎 Rareza:** {c.rarity if c.rarity else 'N/A'}")
 
-                    # --- PRECIOS ---
-                    precios = c.tcgplayer.prices if c.tcgplayer else None
+                    # Precios
                     p = None
-                    if precios:
-                        p = getattr(precios, 'normal', None) or getattr(precios, 'holofoil', None) or getattr(precios, 'reverseHolofoil', None)
+                    if c.tcgplayer and c.tcgplayer.prices:
+                        pr = c.tcgplayer.prices
+                        p = getattr(pr, 'normal', None) or getattr(pr, 'holofoil', None) or getattr(pr, 'reverseHolofoil', None)
                     
                     if p and hasattr(p, 'market'):
                         v_usd = p.market
                         st.divider()
-                        
-                        # Jolteon celebra antes de los precios
-                        st.markdown("<div class='jolteon-celebra'>", unsafe_allow_html=True)
-                        st.image("https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/135.png", width=120)
-                        st.markdown("</div>", unsafe_allow_html=True)
-
                         m1, m2 = st.columns(2)
                         m1.metric("PRECIO MXN", f"${v_usd * TIPO_CAMBIO:.2f}")
                         m2.metric("PRECIO USD", f"${v_usd:.2f}")
                     else:
-                        st.warning("💎 Carta encontrada, pero sin precio hoy.")
+                        st.warning("Carta encontrada, pero no tiene precio de mercado.")
                 else:
-                    st.error(f"No encontré a {nom_l} #{num_l}. Intenta otra foto.")
-        
-        with st.expander("🛠️ Detalles técnicos"):
-            st.image(filtro_vane(rec_nombre), caption=f"Leído: {nom_l}")
-            st.image(filtro_vane(rec_numero), caption=f"Leído: {num_l}")
+                    st.error(f"No encontré a '{nombre}' en la base de datos. Revisa si el nombre está bien escrito.")
+        else:
+            st.warning("⚠️ No pude leer el nombre. Intenta que el nombre del Pokémon se vea muy grande en la foto.")
 
     except Exception as e:
-        st.error(f"¡Ups! Revisa esto: {e}")
+        # Esto evita el error rojo feo y nos da una pista
+        st.info("💡 Tip: Asegúrate de que la carta esté bien derecha y con buena luz.")
+        print(f"Error técnico: {e}")
