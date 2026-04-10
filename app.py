@@ -5,91 +5,79 @@ import pytesseract
 from pokemontcgsdk import Card
 from PIL import Image
 
-# TIPO DE CAMBIO
+# Configuración básica
 TIPO_CAMBIO = 18.20
 
 st.set_page_config(page_title="PokéVane Pro", layout="centered")
-
 st.title("⚡ PokéVane Pro")
-st.write("Mejores resultados: Usa fotos nítidas y bien iluminadas.")
 
-# --- OPCIONES DE ENTRADA ---
-tab1, tab2 = st.tabs(["📸 Usar Cámara", "📁 Subir Foto"])
-
+# Pestañas para subir foto
+tab1, tab2 = st.tabs(["📸 Cámara Directa", "📁 Galería"])
 foto_vane = None
 
 with tab1:
-    camara = st.camera_input("Enfoca el nombre y el número")
-    if camara:
-        foto_vane = camara
-
+    camara = st.camera_input("Enfoca bien el nombre")
+    if camara: foto_vane = camara
 with tab2:
-    galeria = st.file_uploader("Selecciona una foto de tu galería", type=['jpg', 'jpeg', 'png'])
-    if galeria:
-        foto_vane = galeria
+    galeria = st.file_uploader("Sube una foto nítida", type=['jpg', 'jpeg', 'png'])
+    if galeria: foto_vane = galeria
 
-# --- PROCESAMIENTO ---
 if foto_vane:
     try:
-        # Convertir a imagen de OpenCV
+        # Procesar imagen
         file_bytes = np.asarray(bytearray(foto_vane.read()), dtype=np.uint8)
         img = cv2.imdecode(file_bytes, 1)
-        
-        # Normalizar tamaño para que los recortes funcionen
         img_redim = cv2.resize(img, (1000, 1400))
         
-        # Recortes (Ajustados según nuestras pruebas exitosas)
+        # Recortes optimizados
         rec_nombre = img_redim[45:155, 180:780]
         rec_numero = img_redim[1300:1395, 40:350]
 
-        # Procesamiento para OCR
-        def limpiar_imagen(crop):
-            gris = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-            return cv2.threshold(gris, 150, 255, cv2.THRESH_BINARY_INV)[1]
-
-        nom_ocr = limpiar_imagen(rec_nombre)
-        num_ocr = limpiar_imagen(rec_numero)
-
-        # Mostrar qué está viendo la app para que Vane sepa si enfocó bien
-        st.image(rec_nombre, caption="Lo que PokéVane leyó arriba")
+        # OCR
+        gris_nom = cv2.cvtColor(rec_nombre, cv2.COLOR_BGR2GRAY)
+        limpia_nom = cv2.threshold(gris_nom, 150, 255, cv2.THRESH_BINARY_INV)[1]
         
-        # Lectura Tesseract
-        lectura_nom = pytesseract.image_to_string(nom_ocr, config='--psm 7').strip()
-        lectura_num = pytesseract.image_to_string(num_ocr, config='--psm 7').strip()
+        gris_num = cv2.cvtColor(rec_numero, cv2.COLOR_BGR2GRAY)
+        limpia_num = cv2.threshold(gris_num, 150, 255, cv2.THRESH_BINARY_INV)[1]
 
-        # Limpieza de datos
-        nombre_limpio = "".join(filter(str.isalpha, lectura_nom))
-        # Si detectamos Krokorok o algo similar, lo forzamos (opcional)
-        if "Krokorok" in nombre_limpio: nombre_limpio = "Krokorok"
-        
-        solo_num = lectura_num.split('/')[0] if '/' in lectura_num else lectura_num
-        solo_num = solo_num.lstrip('0')
+        nombre_txt = pytesseract.image_to_string(limpia_nom, config='--psm 7').strip()
+        numero_txt = pytesseract.image_to_string(limpia_num, config='--psm 7').strip()
+
+        # Limpieza
+        nombre_limpio = "".join(filter(str.isalpha, nombre_txt))
+        solo_num = numero_txt.split('/')[0] if '/' in numero_txt else numero_txt
+        solo_num = "".join(filter(str.isdigit, solo_num)) # Solo números
+
+        # Mostrar recortes para control
+        st.image(rec_nombre, caption=f"Nombre detectado: {nombre_limpio}")
+        st.image(rec_numero, caption=f"Número detectado: {solo_num}")
 
         if nombre_limpio:
-            st.divider()
-            st.header(f"🔍 {nombre_limpio} #{solo_num}")
-            
-            with st.spinner('Consultando base de datos mundial...'):
-                query = f'name:"{nombre_limpio}" number:"{solo_num}"'
-                resultados = Card.where(q=query)
+            with st.spinner('Buscando en la base de datos...'):
+                # Intento 1: Nombre + Número
+                q = f'name:"{nombre_limpio}" number:"{solo_num}"'
+                res = Card.where(q=q)
                 
-                if resultados:
-                    c = resultados[0]
-                    st.success(f"✅ ¡CARTA ENCONTRADA! ({c.set.name})")
+                # Intento 2 (Respaldo): Solo nombre si el número falló
+                if not res:
+                    res = Card.where(q=f'name:"{nombre_limpio}"')
+                
+                if res:
+                    c = res[0]
+                    st.success(f"✅ ¡Encontrada! {c.name} ({c.set.name})")
                     
-                    # Precios
+                    # Extraer precio
+                    precios = c.tcgplayer.prices if c.tcgplayer else None
                     p = None
-                    if c.tcgplayer and c.tcgplayer.prices:
-                        precios = c.tcgplayer.prices
+                    if precios:
                         p = getattr(precios, 'normal', None) or getattr(precios, 'holofoil', None) or getattr(precios, 'reverseHolofoil', None)
                     
                     if p and hasattr(p, 'market'):
-                        val_usd = p.market
-                        st.metric("VALOR ACTUAL (MXN)", f"${val_usd * TIPO_CAMBIO:.2f}")
-                        st.caption(f"Valor internacional: ${val_usd:.2f} USD")
+                        mxn = p.market * TIPO_CAMBIO
+                        st.metric("PRECIO ESTIMADO", f"${mxn:.2f} MXN")
                     else:
-                        st.warning("⚠️ No hay precio de mercado hoy.")
+                        st.info("No hay precio de mercado actual, pero la carta es real.")
                 else:
-                    st.error("No se encontró la carta exacta. Prueba con una foto más clara.")
+                    st.error("No encontré la carta en la base de datos. Intenta otra foto.")
     except Exception as e:
-        st.error(f"Hubo un detalle: {e}")
+        st.error(f"Error técnico: {e}")
